@@ -1,0 +1,44 @@
+name: OSSMeet temporary demo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-ossmeet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 hours
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start OSSMeet
+        run: |
+          pnpm dev --host 0.0.0.0 > ossmeet.log 2>&1 &
+          sleep 15
+          curl -I http://127.0.0.1:3000 || cat ossmeet.log
+
+      - name: Install cloudflared
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
+            -o cloudflared.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Create TryCloudflare tunnel for 6 hours
+        run: |
+          cloudflared tunnel --no-autoupdate \
+            --url http://127.0.0.1:3000 2>&1 | tee tunnel.log
