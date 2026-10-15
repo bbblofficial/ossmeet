@@ -1,4 +1,4 @@
-name: OSSMeet temporary demo
+name: OSSMeet TryCloudflare Demo
 
 on:
   workflow_dispatch:
@@ -6,10 +6,10 @@ on:
 jobs:
   run-ossmeet:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 hours
+    timeout-minutes: 365
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install pnpm
@@ -24,21 +24,41 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Start OSSMeet
+        shell: bash
         run: |
-          pnpm dev --host 0.0.0.0 > ossmeet.log 2>&1 &
-          sleep 15
-          curl -I http://127.0.0.1:3000 || cat ossmeet.log
+          nohup pnpm dev --host 0.0.0.0 > ossmeet.log 2>&1 &
+          echo $! > ossmeet.pid
 
-      - name: Install cloudflared
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000 > /dev/null; then
+              echo "OSSMeet is running"
+              exit 0
+            fi
+
+            echo "Waiting for OSSMeet..."
+            sleep 2
+          done
+
+          echo "OSSMeet failed to start"
+          cat ossmeet.log
+          exit 1
+
+      - name: Install Cloudflared
+        shell: bash
         run: |
-          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
+          curl -L \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb \
             -o cloudflared.deb
+
           sudo dpkg -i cloudflared.deb
 
-      - name: Create TryCloudflare tunnel for 6 hours
+      - name: Start TryCloudflare tunnel
+        shell: bash
         run: |
-          cloudflared tunnel --no-autoupdate \
-            --url http://127.0.0.1:3000 2>&1 | tee tunnel.log
+          cloudflared tunnel \
+            --no-autoupdate \
+            --url http://127.0.0.1:3000 \
+            2>&1 | tee cloudflared.log
